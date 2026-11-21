@@ -9,6 +9,24 @@ Two scenarios are designed to be verifiable:
 
 This remains an **incomplete prototype**, not a production exchange. Its known limitations are described below.
 
+## Technology
+
+| Area | Implementation |
+| --- | --- |
+| Exchange and risk | Java 21, Spring Boot, Spring JDBC, explicit PostgreSQL locking |
+| Persistence | PostgreSQL 16, Flyway migrations, named Docker volumes |
+| Dashboard | React, TypeScript, Vite, REST, Server-Sent Events |
+| Verification | JUnit 5, PostgreSQL integration tests, GitHub Actions |
+
+## Engineering decisions
+
+- **Parallel markets, shared accounts:** BTC-PERP and ETH-PERP have separate bounded command queues. PostgreSQL account-row locks serialize collateral changes across both markets, and account locks are acquired in a consistent order for matching.
+- **Fill as the durable unit:** A fill commits with both orders, reservations, positions, cash changes, and its event in one database transaction. A backend restart can read the committed state from PostgreSQL.
+- **Reduce-only liquidation:** A liquidation fill is capped by the current position at execution time. Startup recovery and a periodic risk scan look for breached accounts or liquidation episodes that need attention.
+- **Updates from persisted state:** The dashboard treats SSE messages as refresh hints and reloads state after connecting or reconnecting. It also receives periodic refresh hints to recover from missed notifications.
+
+The tradeoff is deliberate: separate market queues allow independent order processing, while shared account locks and an exclusive risk gate limit concurrency where account consistency requires coordination. Queued commands are held in memory, so clients must retry uncertain submissions with the same client order ID.
+
 ## Quick start
 
 Requirements: Docker Desktop with Compose. The first build downloads the Java, Node.js, and PostgreSQL images and dependencies.
@@ -41,6 +59,8 @@ Open the dashboard and select a scenario under **Scenario testing**. Loading eit
 
 For automated PowerShell walkthroughs, run `scripts/recovery-demo.ps1` or `scripts/collateral-demo.ps1` from the project root. Both create a temporary isolated Compose project and remove its volume after verification. The dashboard walkthrough has an additional check in `scripts/dashboard-smoke.ps1`, which resets the dashboard's scenario database.
 
+For a concise presentation of the two scenarios, see the [demo recording guide](docs/demo-recording-guide.md).
+
 ## Development and checks
 
 For frontend development, with the Compose backends running, use `cd frontend`, `npm ci`, then `npm run dev`. Vite proxies the main API to port 8080 and the isolated demo API to localhost port 8081. Run `npm run check` and `npm run build` for the frontend checks.
@@ -56,6 +76,8 @@ The `/api/stream` SSE endpoint polls the committed event timeline and sends refr
 The prototype uses integer cents and computes a reservation as `ceil(price_cents * quantity / 5)`. Position margin is 20% of entry notional, rounded up, and equity includes unrealized P&L at the current mark. Average entry is rounded to the nearest cent, with ties rounded up, each time a position is increased. Reductions realize `(fill price - entry price) * closed quantity` for longs, with the sign reversed for shorts; reversals open the remainder at the fill price. Matching uses resting price and price-time priority. Self-matches are skipped. The risk calculation is deliberately preliminary, and it is not a complete risk engine. The schema and API may change as the missing exchange features are implemented.
 
 ## Exchange design and limitations
+
+The platform targets a **single active backend instance** and is intended for local portfolio demonstrations. It does not provide user authentication or real-market connectivity. In-memory queues do not survive a process crash, rejected orders are not recorded in the event timeline, and the dashboard's live notifications are refresh hints rather than a durable event replay. Liquidation closes all positions in an episode and blocks all new orders during that episode, even when the account returns above maintenance margin. The risk model and failure testing do not cover production exchange requirements.
 
 ### Market concurrency and shared collateral
 
