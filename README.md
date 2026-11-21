@@ -9,6 +9,22 @@ Two scenarios are designed to be verifiable:
 
 This remains an **incomplete prototype**, not a production exchange. Its known limitations are described below.
 
+## Dashboard
+
+These screenshots show an earlier version of the interface; some labels have since been updated.
+
+**Trading workspace:** market selection, order entry, and the account overview.
+
+![Trading workspace with the BTC market, order book, order entry, and account overview](docs/images/Screenshot%202026-11-21%20122118.png)
+
+**Shared collateral:** an ETH order reserves $70 of Alice's $100 balance, leaving $30 available.
+
+![Account overview showing an open ETH order and the collateral reserved for it](docs/images/Screenshot%202026-11-21%20122139.png)
+
+**Collateral limit:** the exchange rejects an additional order when there is no available collateral.
+
+![Order-entry screen displaying an insufficient available collateral message](docs/images/Screenshot%202026-11-21%20122202.png)
+
 ## Technology
 
 | Area | Implementation |
