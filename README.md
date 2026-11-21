@@ -1,4 +1,4 @@
-# Exchange — paper trading platform
+# Exchange paper trading platform
 
 This is an **incomplete prototype**, not a complete exchange. It supports limit-order matching, positions, basic P&L, reservations, mark-price updates, a persisted liquidation flow, concurrent order submission across markets, and a React dashboard.
 
