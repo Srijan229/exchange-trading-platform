@@ -1,16 +1,61 @@
 # Exchange paper trading platform
 
-This is an **incomplete prototype**, not a complete exchange. It supports limit-order matching, positions, basic P&L, reservations, mark-price updates, a persisted liquidation flow, concurrent order submission across markets, and a React dashboard.
+An exchange prototype for BTC-PERP and ETH-PERP that demonstrates price-time matching, cross-market collateral management, and liquidation recovery. The React dashboard shows market depth, trades, positions, balances, and operational events. All accounts use virtual balances and practice prices; no real funds are involved.
+
+Two scenarios are designed to be verifiable:
+
+- **Liquidation recovery:** close half of Alice's position, restart the backend against the same PostgreSQL database, and finish the liquidation without duplicating a fill or opening a reverse position.
+- **Shared collateral:** send orders to both markets at the same time and verify that only one can reserve more than half of Alice's available balance.
+
+This remains an **incomplete prototype**, not a production exchange. Its known limitations are described below.
+
+## Quick start
+
+Requirements: Docker Desktop with Compose. The first build downloads the Java, Node.js, and PostgreSQL images and dependencies.
 
 With Docker running, start everything with `docker compose up --build`. Open the dashboard at **http://localhost:3000**; the exchange API is at `http://localhost:8080/api`. PostgreSQL persists in the `exchange-data` volume. The guided demos use a second backend and the separate `exchange-demo-data` volume. Java 21 is the target; `mvnw` and `mvnw.cmd` bootstrap Maven. Stop the services with `docker compose stop`.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["React dashboard"] -->|"REST commands and queries"| API["Spring Boot API"]
+    API -->|"SSE refresh hints"| UI
+    API --> BTC["BTC-PERP command queue"]
+    API --> ETH["ETH-PERP command queue"]
+    BTC --> DB[("PostgreSQL")]
+    ETH --> DB
+    RISK["Risk and recovery"] -->|"exclusive risk gate"| DB
+    API --> RISK
+    UI -->|"isolated scenarios"| DEMO["Separate backend and database"]
+```
+
+Each market worker processes its own bounded queue. Account-row locks protect shared collateral when the two workers touch the same account. PostgreSQL stores orders, positions, fills, liquidation episodes, and events. A separate backend and database let the scenario controls reset their own data without resetting the main exchange.
+
+## Run the scenarios
+
+Open the dashboard and select a scenario under **Scenario testing**. Loading either scenario resets only the isolated scenario environment.
+
+1. **Liquidation recovery:** Load the scenario, drop BTC's mark from $50 to $45, and add the first buyer. Alice has five contracts left, $75 cash, and $50 equity. Optionally restart the scenario backend with `docker compose kill demo-backend` and `docker compose up -d demo-backend`. When the connection returns, add the second buyer. Alice should have no position and $50 cash, with two liquidation fills of five contracts each.
+2. **Shared collateral:** Load the scenario and submit the simultaneous orders. Each $350 order requires a $70 reservation against Alice's $100 cash; exactly one should be accepted. Cancel the accepted order and submit a fresh order in the other market to confirm the reservation was released.
+
+For automated PowerShell walkthroughs, run `scripts/recovery-demo.ps1` or `scripts/collateral-demo.ps1` from the project root. Both create a temporary isolated Compose project and remove its volume after verification. The dashboard walkthrough has an additional check in `scripts/dashboard-smoke.ps1`, which resets the dashboard's scenario database.
+
+## Development and checks
+
 For frontend development, with the Compose backends running, use `cd frontend`, `npm ci`, then `npm run dev`. Vite proxies the main API to port 8080 and the isolated demo API to localhost port 8081. Run `npm run check` and `npm run build` for the frontend checks.
+
+GitHub Actions builds the backend with Java 21 and runs its integration tests against a PostgreSQL 16 service. It also installs the dashboard dependencies from the lockfile, runs the TypeScript check, and creates a production build. The CI database is disposable; the integration test suite resets its data. The workflow does not run the container-restart walkthrough or perform browser visual testing.
+
+## Dashboard and live updates
 
 The dashboard shows the selected market, order book, trade history, account balances and positions, open orders, and event timeline. It can submit or cancel orders and change the practice mark price. The scenario workspace provides guided liquidation and shared-collateral cases in a separate database. Loading a scenario resets **that scenario database**, not the main exchange. In the liquidation scenario, after the first buyer fills five contracts, optionally run `docker compose kill demo-backend` followed by `docker compose up -d demo-backend`, wait for the live connection to return, and then add the second buyer. Scenario progress is stored in the browser session; after a new browser session, reload the scenario to start again. The platform uses practice prices and virtual balances; no real funds are involved.
 
 The `/api/stream` SSE endpoint polls the committed event timeline and sends refresh hints; it does not stream uncommitted changes. The dashboard fetches persisted state when the stream connects or reconnects and on each notification. A five-second refresh heartbeat also covers missed notifications and commits whose event IDs become visible out of order. The stream is a notification mechanism, not a durable replay log. Rejected requests are currently shown as dashboard errors but are not yet persisted in the event timeline.
 
 The prototype uses integer cents and computes a reservation as `ceil(price_cents * quantity / 5)`. Position margin is 20% of entry notional, rounded up, and equity includes unrealized P&L at the current mark. Average entry is rounded to the nearest cent, with ties rounded up, each time a position is increased. Reductions realize `(fill price - entry price) * closed quantity` for longs, with the sign reversed for shorts; reversals open the remainder at the fill price. Matching uses resting price and price-time priority. Self-matches are skipped. The risk calculation is deliberately preliminary, and it is not a complete risk engine. The schema and API may change as the missing exchange features are implemented.
+
+## Exchange design and limitations
 
 ### Market concurrency and shared collateral
 

@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "exchange.risk.retry-delay-ms=1000")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"exchange.risk.retry-delay-ms=1000", "server.shutdown=immediate"})
 class MatchingIntegrationTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
         String external = System.getenv("TEST_DATABASE_URL");
@@ -189,7 +189,9 @@ class MatchingIntegrationTest {
         } finally { pool.shutdownNow(); }
     }
     @Test void liveNotificationsWaitUntilEventCommits() throws Exception {
-        db.queryForObject("SELECT setval(pg_get_serial_sequence('events','id'), 1000000, false)", Long.class);
+        // Use a fresh high sequence value: the notifier may have seen IDs from
+        // earlier tests before the test fixture restarted the database sequence.
+        db.queryForObject("SELECT setval(pg_get_serial_sequence('events','id'), ?, false)", Long.class, System.currentTimeMillis() * 1000L);
         var client = java.net.http.HttpClient.newHttpClient();
         var response = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + port + "/api/stream")).GET().build(), java.net.http.HttpResponse.BodyHandlers.ofInputStream());
         assertThat(response.statusCode()).isEqualTo(200);
