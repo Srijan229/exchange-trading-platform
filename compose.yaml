@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: exchange
+      POSTGRES_USER: exchange
+      POSTGRES_PASSWORD: exchange
+    ports: ["5432:5432"]
+    volumes: ["exchange-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exchange"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  backend:
+    build: .
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/exchange
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["8080:8080"]
+  demo-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: exchange
+      POSTGRES_USER: exchange
+      POSTGRES_PASSWORD: exchange
+    volumes: ["exchange-demo-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exchange"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  demo-backend:
+    build: .
+    environment:
+      DATABASE_URL: jdbc:postgresql://demo-db:5432/exchange
+      EXCHANGE_DEMO_ENABLED: "true"
+    depends_on:
+      demo-db:
+        condition: service_healthy
+    ports: ["127.0.0.1:8081:8080"]
+  dashboard:
+    build: ./frontend
+    ports: ["3000:80"]
+    depends_on: [backend, demo-backend]
+volumes:
+  exchange-data:
+  exchange-demo-data:

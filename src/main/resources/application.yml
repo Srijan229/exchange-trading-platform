@@ -1,0 +1,13 @@
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/exchange}
+    username: ${DATABASE_USER:exchange}
+    password: ${DATABASE_PASSWORD:exchange}
+server:
+  port: 8080
+  error:
+    include-message: always
